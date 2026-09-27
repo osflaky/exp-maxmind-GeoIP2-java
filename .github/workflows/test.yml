@@ -1,0 +1,31 @@
+name: Run tests
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - distribution: 'zulu'
+          os: macos-latest
+          version: 24
+          expander_leg: macos-latest-24-arm64
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1
+      with:
+        submodules: true
+        persist-credentials: false
+    - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6   # v6.0.1
+      with:
+        distribution: ${{ matrix.distribution }}
+        java-version: ${{ matrix.version }}
+    - run: mvn test -B
+      # This is after the test run to work around
+      # https://issues.apache.org/jira/projects/MJAVADOC/issues/MJAVADOC-736
+    - run: mvn javadoc:javadoc
+    name: test [${{ matrix.expander_leg }}]
+    timeout-minutes: 150
