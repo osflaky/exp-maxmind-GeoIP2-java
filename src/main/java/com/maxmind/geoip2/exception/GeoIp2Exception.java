@@ -1,0 +1,29 @@
+package com.maxmind.geoip2.exception;
+
+/**
+ * This class represents a generic GeoIP error. All other exceptions thrown by
+ * the GeoIP API subclass this exception
+ */
+public sealed class GeoIp2Exception extends Exception
+    permits AddressNotFoundException,
+            AuthenticationException,
+            InvalidRequestException,
+            OutOfQueriesException,
+            PermissionRequiredException {
+
+
+    /**
+     * @param message A message describing the reason why the exception was thrown.
+     */
+    public GeoIp2Exception(String message) {
+        super(message);
+    }
+
+    /**
+     * @param message A message describing the reason why the exception was thrown.
+     * @param cause   The cause of the exception.
+     */
+    public GeoIp2Exception(String message, Throwable cause) {
+        super(message, cause);
+    }
+}

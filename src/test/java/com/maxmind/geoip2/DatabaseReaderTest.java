@@ -1,0 +1,556 @@
+package com.maxmind.geoip2;
+
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.maxmind.db.Networks;
+import com.maxmind.db.Reader;
+import com.maxmind.geoip2.exception.AddressNotFoundException;
+import com.maxmind.geoip2.exception.GeoIp2Exception;
+import com.maxmind.geoip2.model.AnonymousIpResponse;
+import com.maxmind.geoip2.model.AnonymousPlusResponse;
+import com.maxmind.geoip2.model.AsnResponse;
+import com.maxmind.geoip2.model.CityResponse;
+import com.maxmind.geoip2.model.ConnectionTypeResponse;
+import com.maxmind.geoip2.model.ConnectionTypeResponse.ConnectionType;
+import com.maxmind.geoip2.model.CountryResponse;
+import com.maxmind.geoip2.model.DomainResponse;
+import com.maxmind.geoip2.model.EnterpriseResponse;
+import com.maxmind.geoip2.model.IpRiskResponse;
+import com.maxmind.geoip2.model.IspResponse;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.InetAddress;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.Arrays;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+public class DatabaseReaderTest {
+    private File geoipFile;
+    private InputStream geoipStream;
+
+    @BeforeEach
+    public void setup() throws URISyntaxException, IOException {
+        URL resource = DatabaseReaderTest.class
+            .getResource("/maxmind-db/test-data/GeoIP2-City-Test.mmdb");
+        this.geoipStream = resource.openStream();
+        this.geoipFile = new File(resource.toURI());
+    }
+
+    @Test
+    public void testDefaultLocaleFile() throws Exception {
+        try (DatabaseReader reader = new DatabaseReader.Builder(this.geoipFile)
+            .build()
+        ) {
+            this.testDefaultLocale(reader);
+        }
+    }
+
+    @Test
+    public void testDefaultLocaleURL() throws Exception {
+        try (DatabaseReader reader = new DatabaseReader.Builder(this.geoipStream)
+            .build()
+        ) {
+            this.testDefaultLocale(reader);
+        }
+    }
+
+    private void testDefaultLocale(DatabaseReader reader) throws IOException,
+        GeoIp2Exception {
+        CityResponse city = reader.city(InetAddress.getByName("81.2.69.160"));
+        assertEquals("London", city.city().name());
+    }
+
+    @Test
+    public void testIsInEuropeanUnion() throws Exception {
+        try (DatabaseReader reader = new DatabaseReader.Builder(this.geoipFile)
+            .build()
+        ) {
+            CityResponse city = reader.city(InetAddress.getByName("89.160.20.128"));
+            assertTrue(city.country().isInEuropeanUnion());
+            assertTrue(city.registeredCountry().isInEuropeanUnion());
+        }
+    }
+
+    @Test
+    public void testLocaleListFile() throws Exception {
+        try (DatabaseReader reader = new DatabaseReader.Builder(this.geoipFile)
+            .locales(Arrays.asList("xx", "ru", "pt-BR", "es", "en"))
+            .build()
+        ) {
+            this.testLocaleList(reader);
+        }
+    }
+
+    @Test
+    public void testLocaleListURL() throws Exception {
+        try (DatabaseReader reader = new DatabaseReader.Builder(this.geoipStream)
+            .locales(Arrays.asList("xx", "ru", "pt-BR", "es", "en"))
+            .build()
+        ) {
+            this.testLocaleList(reader);
+        }
+    }
+
+    private void testLocaleList(DatabaseReader reader) throws IOException,
+        GeoIp2Exception {
+        CityResponse city = reader.city(InetAddress.getByName("81.2.69.160"));
+        assertEquals("Лондон", city.city().name());
+    }
+
+    @Test
+    public void testMemoryModeFile() throws Exception {
+        try (DatabaseReader reader = new DatabaseReader.Builder(this.geoipFile)
+            .fileMode(Reader.FileMode.MEMORY).build()
+        ) {
+            this.testMemoryMode(reader);
+        }
+    }
+
+    @Test
+    public void testMemoryModeURL() throws Exception {
+        try (DatabaseReader reader = new DatabaseReader.Builder(this.geoipStream)
+            .fileMode(Reader.FileMode.MEMORY).build()
+        ) {
+            this.testMemoryMode(reader);
+        }
+    }
+
+    private void testMemoryMode(DatabaseReader reader) throws IOException,
+        GeoIp2Exception {
+        CityResponse city = reader.city(InetAddress.getByName("81.2.69.160"));
+        assertEquals("London", city.city().name());
+        assertEquals(100, city.location().accuracyRadius().longValue());
+    }
+
+    @Test
+    public void metadata() throws IOException {
+        DatabaseReader reader = new DatabaseReader.Builder(this.geoipFile)
+            .fileMode(Reader.FileMode.MEMORY).build();
+        assertEquals("GeoIP2-City", reader.metadata().databaseType());
+    }
+
+    @Test
+    public void hasIpAddressFile() throws Exception {
+        try (DatabaseReader reader = new DatabaseReader.Builder(this.geoipFile)
+            .build()
+        ) {
+            this.hasIpInfo(reader);
+        }
+    }
+
+    @Test
+    public void hasIpAddressURL() throws Exception {
+        try (DatabaseReader reader = new DatabaseReader.Builder(this.geoipStream)
+            .build()
+        ) {
+            this.hasIpInfo(reader);
+        }
+    }
+
+    private void hasIpInfo(DatabaseReader reader) throws IOException,
+        GeoIp2Exception {
+        CityResponse cio = reader.city(InetAddress.getByName("81.2.69.160"));
+        assertEquals("81.2.69.160", cio.traits().ipAddress().getHostAddress());
+        assertEquals("81.2.69.160/27", cio.traits().network().toString());
+    }
+
+    @Test
+    public void unknownAddressFile() throws Exception {
+        try (DatabaseReader reader = new DatabaseReader.Builder(this.geoipFile)
+            .build()
+        ) {
+            this.unknownAddress(reader);
+        }
+    }
+
+    @Test
+    public void unknownAddressURL() throws Exception {
+        try (DatabaseReader reader = new DatabaseReader.Builder(this.geoipStream)
+            .build()
+        ) {
+            this.unknownAddress(reader);
+        }
+    }
+
+    private void unknownAddress(DatabaseReader reader) throws IOException,
+        GeoIp2Exception {
+        assertFalse(reader.tryCity(InetAddress.getByName("10.10.10.10")).isPresent());
+
+        Exception ex = assertThrows(AddressNotFoundException.class,
+            () -> reader.city(InetAddress.getByName("10.10.10.10")));
+        assertThat(ex.getMessage(),
+            containsString("The address 10.10.10.10 is not in the database."));
+    }
+
+    @Test
+    public void testUnsupportedFileMode() throws IOException {
+        Exception ex = assertThrows(IllegalArgumentException.class,
+            () -> new DatabaseReader.Builder(this.geoipStream).fileMode(
+                Reader.FileMode.MEMORY_MAPPED).build()
+        );
+        assertThat(ex.getMessage(), containsString("Only FileMode.MEMORY"));
+    }
+
+    @Test
+    public void incorrectDatabaseMethod() throws Exception {
+        try (DatabaseReader db = new DatabaseReader.Builder(this.geoipFile).build()) {
+            Exception ex = assertThrows(UnsupportedOperationException.class,
+                () -> db.isp(InetAddress.getByName("1.1.1.1")));
+            assertThat(ex.getMessage(),
+                containsString("GeoIP2-City database using the isp method"));
+        }
+    }
+
+    @Test
+    public void testAnonymousIp() throws Exception {
+        try (DatabaseReader reader = new DatabaseReader.Builder(
+            this.getFile("GeoIP2-Anonymous-IP-Test.mmdb")).build()
+        ) {
+            InetAddress ipAddress = InetAddress.getByName("1.2.0.1");
+            AnonymousIpResponse response = reader.anonymousIp(ipAddress);
+            assertTrue(response.isAnonymous());
+            assertTrue(response.isAnonymousVpn());
+            assertFalse(response.isHostingProvider());
+            assertFalse(response.isPublicProxy());
+            assertFalse(response.isResidentialProxy());
+            assertFalse(response.isTorExitNode());
+            assertEquals(ipAddress.getHostAddress(), response.ipAddress().getHostAddress());
+            assertEquals("1.2.0.0/16", response.network().toString());
+
+            AnonymousIpResponse tryResponse = reader.tryAnonymousIp(ipAddress).get();
+            assertEquals(response.toJson(), tryResponse.toJson());
+        }
+    }
+
+    @Test
+    public void testAnonymousPlus() throws Exception {
+        try (DatabaseReader reader = new DatabaseReader.Builder(
+            this.getFile("GeoIP-Anonymous-Plus-Test.mmdb")).build()
+        ) {
+            InetAddress ipAddress = InetAddress.getByName("1.2.0.1");
+            AnonymousPlusResponse response = reader.anonymousPlus(ipAddress);
+            assertEquals(30, response.anonymizerConfidence());
+            assertTrue(response.isAnonymous());
+            assertTrue(response.isAnonymousVpn());
+            assertFalse(response.isHostingProvider());
+            assertFalse(response.isPublicProxy());
+            assertFalse(response.isResidentialProxy());
+            assertFalse(response.isTorExitNode());
+            assertEquals(ipAddress.getHostAddress(), response.ipAddress().getHostAddress());
+            assertEquals("1.2.0.1/32", response.network().toString());
+            assertEquals("2025-04-14", response.networkLastSeen().toString());
+            assertEquals("foo", response.providerName());
+
+            AnonymousPlusResponse tryResponse = reader.tryAnonymousPlus(ipAddress).get();
+            assertEquals(response.toJson(), tryResponse.toJson());
+        }
+    }
+
+    @Test
+    public void testAnonymousIpIsResidentialProxy() throws Exception {
+        try (DatabaseReader reader = new DatabaseReader.Builder(
+            this.getFile("GeoIP2-Anonymous-IP-Test.mmdb")).build()
+        ) {
+            InetAddress ipAddress = InetAddress.getByName("81.2.69.1");
+            AnonymousIpResponse response = reader.anonymousIp(ipAddress);
+            assertTrue(response.isResidentialProxy());
+        }
+    }
+
+    @Test
+    public void testAsn() throws Exception {
+        try (DatabaseReader reader = new DatabaseReader.Builder(
+            this.getFile("GeoLite2-ASN-Test.mmdb")).build()
+        ) {
+            InetAddress ipAddress = InetAddress.getByName("1.128.0.0");
+            AsnResponse response = reader.asn(ipAddress);
+            assertEquals(1221, response.autonomousSystemNumber().intValue());
+            assertEquals("Telstra Pty Ltd",
+                response.autonomousSystemOrganization());
+            assertEquals(ipAddress.getHostAddress(), response.ipAddress().getHostAddress());
+            assertEquals("1.128.0.0/11", response.network().toString());
+
+            AsnResponse tryResponse = reader.tryAsn(ipAddress).get();
+            assertEquals(response.toJson(), tryResponse.toJson());
+        }
+    }
+
+    @Test
+    public void testCity() throws Exception {
+        try (DatabaseReader reader = new DatabaseReader.Builder(
+            getFile("GeoIP2-City-Test.mmdb")).build()
+        ) {
+            InetAddress ipAddress = InetAddress.getByName("81.2.69.192");
+
+            CityResponse response = reader.city(ipAddress);
+            assertEquals(2635167, response.country().geonameId().intValue());
+            assertEquals(100, response.location().accuracyRadius().intValue());
+            assertFalse(response.traits().isLegitimateProxy());
+            assertEquals(ipAddress.getHostAddress(), response.traits().ipAddress().getHostAddress());
+            assertEquals("81.2.69.192/28", response.traits().network().toString());
+
+            CityResponse tryResponse = reader.tryCity(ipAddress).get();
+            assertEquals(response.toJson(), tryResponse.toJson());
+
+            // This IP has is_anycast
+            response = reader.city(InetAddress.getByName("214.1.1.0"));
+            assertTrue(response.traits().isAnycast());
+
+            // Test that the methods can be called on DB without
+            // an exception
+            reader.country(ipAddress);
+        }
+    }
+
+    @Test
+    public void testConnectionType() throws Exception {
+        try (DatabaseReader reader = new DatabaseReader.Builder(
+            this.getFile("GeoIP2-Connection-Type-Test.mmdb")).build()
+        ) {
+            InetAddress ipAddress = InetAddress.getByName("1.0.1.0");
+
+            ConnectionTypeResponse response = reader.connectionType(ipAddress);
+
+            assertEquals(ConnectionType.CELLULAR, response.connectionType());
+            assertEquals(ipAddress.getHostAddress(), response.ipAddress().getHostAddress());
+            assertEquals("1.0.1.0/24", response.network().toString());
+
+            ConnectionTypeResponse tryResponse = reader.tryConnectionType(ipAddress).get();
+            assertEquals(response.toJson(), tryResponse.toJson());
+        }
+    }
+
+    @Test
+    public void testCountry() throws Exception {
+        try (DatabaseReader reader = new DatabaseReader.Builder(
+            getFile("GeoIP2-Country-Test.mmdb")).build()
+        ) {
+            InetAddress ipAddress = InetAddress.getByName("74.209.24.0");
+
+            CountryResponse response = reader.country(ipAddress);
+            assertEquals("NA", response.continent().code());
+            assertEquals(6252001, response.country().geonameId().intValue());
+            assertEquals(6252001, response.registeredCountry().geonameId().intValue());
+            assertEquals(ipAddress.getHostAddress(), response.traits().ipAddress().getHostAddress());
+            assertEquals("74.209.16.0/20", response.traits().network().toString());
+
+            CountryResponse tryResponse = reader.tryCountry(ipAddress).get();
+            assertEquals(response.toJson(), tryResponse.toJson());
+
+            // This IP has is_anycast
+            response = reader.country(InetAddress.getByName("214.1.1.0"));
+            assertTrue(response.traits().isAnycast());
+        }
+    }
+
+    @Test
+    public void testDomain() throws Exception {
+        try (DatabaseReader reader = new DatabaseReader.Builder(
+            this.getFile("GeoIP2-Domain-Test.mmdb")).build()
+        ) {
+            InetAddress ipAddress = InetAddress.getByName("1.2.0.0");
+            DomainResponse response = reader.domain(ipAddress);
+            assertEquals("maxmind.com", response.domain());
+            assertEquals(ipAddress.getHostAddress(), response.ipAddress().getHostAddress());
+            assertEquals("1.2.0.0/16", response.network().toString());
+
+            DomainResponse tryResponse = reader.tryDomain(ipAddress).get();
+            assertEquals(response.toJson(), tryResponse.toJson());
+        }
+    }
+
+    @Test
+    public void testEnterprise() throws Exception {
+        try (DatabaseReader reader = new DatabaseReader.Builder(
+            getFile("GeoIP2-Enterprise-Test.mmdb")).build()
+        ) {
+            InetAddress ipAddress = InetAddress.getByName("74.209.24.0");
+
+            EnterpriseResponse response = reader.enterprise(ipAddress);
+            assertEquals(11, response.city().confidence().intValue());
+            assertEquals(99, response.country().confidence().intValue());
+            assertEquals(6252001, response.country().geonameId().intValue());
+            assertEquals(27, response.location().accuracyRadius().intValue());
+            assertEquals(ConnectionType.CABLE_DSL, response.traits().connectionType());
+            assertTrue(response.traits().isLegitimateProxy());
+            assertEquals(ipAddress.getHostAddress(), response.traits().ipAddress().getHostAddress());
+            assertEquals("74.209.16.0/20", response.traits().network().toString());
+
+            EnterpriseResponse tryResponse = reader.tryEnterprise(ipAddress).get();
+            assertEquals(response.toJson(), tryResponse.toJson());
+
+            ipAddress = InetAddress.getByName("149.101.100.0");
+            response = reader.enterprise(ipAddress);
+            assertEquals("310", response.traits().mobileCountryCode());
+            assertEquals("004", response.traits().mobileNetworkCode());
+
+            // This IP has is_anycast
+            response = reader.enterprise(InetAddress.getByName("214.1.1.0"));
+            assertTrue(response.traits().isAnycast());
+
+            // Test that the city and country methods can be called without
+            // an exception
+            reader.city(ipAddress);
+            reader.country(ipAddress);
+        }
+    }
+
+    @Test
+    public void testIsp() throws Exception {
+        try (DatabaseReader reader = new DatabaseReader.Builder(
+            this.getFile("GeoIP2-ISP-Test.mmdb")).build()
+        ) {
+            InetAddress ipAddress = InetAddress.getByName("1.128.0.0");
+            IspResponse response = reader.isp(ipAddress);
+            assertEquals(1221, response.autonomousSystemNumber().intValue());
+            assertEquals("Telstra Pty Ltd",
+                response.autonomousSystemOrganization());
+            assertEquals("Telstra Internet", response.isp());
+            assertEquals("Telstra Internet", response.organization());
+
+            assertEquals(ipAddress.getHostAddress(), response.ipAddress().getHostAddress());
+            assertEquals("1.128.0.0/11", response.network().toString());
+
+            IspResponse tryResponse = reader.tryIsp(ipAddress).get();
+            assertEquals(response.toJson(), tryResponse.toJson());
+
+            ipAddress = InetAddress.getByName("149.101.100.0");
+            response = reader.isp(ipAddress);
+            assertEquals("310", response.mobileCountryCode());
+            assertEquals("004", response.mobileNetworkCode());
+        }
+    }
+
+    @Test
+    public void testIpRisk() throws Exception {
+        try (DatabaseReader reader = new DatabaseReader.Builder(
+            this.getFile("GeoIP2-IP-Risk-Test.mmdb")).build()
+        ) {
+            InetAddress ipAddress = InetAddress.getByName("214.2.3.0");
+            IpRiskResponse response = reader.ipRisk(ipAddress);
+            assertEquals(25.0, response.ipRisk());
+            assertTrue(response.isAnonymous());
+            assertTrue(response.isAnonymousVpn());
+            assertFalse(response.isHostingProvider());
+            assertFalse(response.isPublicProxy());
+            assertFalse(response.isResidentialProxy());
+            assertFalse(response.isTorExitNode());
+            assertEquals(ipAddress.getHostAddress(), response.ipAddress().getHostAddress());
+            assertEquals("214.2.3.0/30", response.network().toString());
+
+            IpRiskResponse tryResponse = reader.tryIpRisk(ipAddress).get();
+            assertEquals(response.toJson(), tryResponse.toJson());
+        }
+    }
+
+    @Test
+    public void testIpRiskWithoutIpRiskField() throws Exception {
+        // Test that records without ip_risk field default to 0.0.
+        // A value of 0.0 indicates that the risk score was not set in the database.
+        try (DatabaseReader reader = new DatabaseReader.Builder(
+            this.getFile("GeoIP2-IP-Risk-Test.mmdb")).build()
+        ) {
+            InetAddress ipAddress = InetAddress.getByName("11.1.2.3");
+            IpRiskResponse response = reader.ipRisk(ipAddress);
+            assertEquals(0.0, response.ipRisk());
+            assertTrue(response.isAnonymous());
+            assertFalse(response.isAnonymousVpn());
+            assertFalse(response.isHostingProvider());
+            assertTrue(response.isPublicProxy());
+            assertFalse(response.isResidentialProxy());
+            assertFalse(response.isTorExitNode());
+            assertEquals(ipAddress.getHostAddress(), response.ipAddress().getHostAddress());
+        }
+    }
+
+    private File getFile(String filename) throws URISyntaxException {
+        URL resource = DatabaseReaderTest.class
+            .getResource("/maxmind-db/test-data/" + filename);
+        return new File(resource.toURI());
+    }
+
+    /**
+     * Tests that all records in each test database can be deserialized.
+     * This test iterates over every network in the database and performs
+     * a lookup to ensure no deserialization errors occur.
+     *
+     * <p>Based on the reproduction test from GitHub issue #644.
+     * https://github.com/maxmind/GeoIP2-java/issues/644
+     */
+    @Test
+    public void testAllRecordsDeserialize() throws Exception {
+        var testDataDir = Paths.get(
+            getClass().getResource("/maxmind-db/test-data").toURI()
+        );
+
+        try (var stream = Files.newDirectoryStream(testDataDir, "*.mmdb")) {
+            for (var dbPath : stream) {
+                var filename = dbPath.getFileName().toString();
+
+                if (shouldSkipDatabase(filename)) {
+                    continue;
+                }
+
+                try (var reader = new Reader(dbPath.toFile());
+                     var dbReader = new DatabaseReader.Builder(dbPath.toFile()).build()) {
+
+                    var dbType = reader.getMetadata().databaseType();
+                    var networks = reader.networks(Object.class);
+
+                    while (networks.hasNext()) {
+                        var ip = networks.next().network().networkAddress();
+                        lookupByDatabaseType(dbReader, dbType, ip);
+                    }
+                }
+            }
+        }
+    }
+
+    private boolean shouldSkipDatabase(String filename) {
+        // Skip internal test databases and those without model classes in GeoIP2-java
+        return filename.startsWith("MaxMind-DB-")
+            || filename.contains("Broken")
+            || filename.contains("Invalid")
+            || filename.contains("DensityIncome")
+            || filename.contains("User-Count")
+            || filename.contains("Static-IP-Score")
+            || filename.contains("Residential-Proxy");
+    }
+
+    private void lookupByDatabaseType(DatabaseReader reader, String dbType, InetAddress ip)
+        throws IOException, GeoIp2Exception {
+        if (dbType.contains("City")) {
+            reader.city(ip);
+        } else if (dbType.contains("Country")) {
+            reader.country(ip);
+        } else if (dbType.contains("Enterprise")) {
+            reader.enterprise(ip);
+        } else if (dbType.equals("GeoIP-Anonymous-Plus")) {
+            reader.anonymousPlus(ip);
+        } else if (dbType.equals("GeoIP2-Anonymous-IP")) {
+            reader.anonymousIp(ip);
+        } else if (dbType.equals("GeoIP2-ISP")) {
+            reader.isp(ip);
+        } else if (dbType.equals("GeoIP2-IP-Risk")) {
+            reader.ipRisk(ip);
+        } else if (dbType.equals("GeoIP2-Domain")) {
+            reader.domain(ip);
+        } else if (dbType.equals("GeoLite2-ASN")) {
+            reader.asn(ip);
+        } else if (dbType.equals("GeoIP2-Connection-Type")) {
+            reader.connectionType(ip);
+        } else {
+            throw new IllegalArgumentException("Unknown database type: " + dbType);
+        }
+    }
+}
